@@ -42,12 +42,15 @@ const AuditLog = () => {
         .from('audit_log')
         .select(`
           *,
-          user_roles:changed_by (nama_lengkap, role)
+          user_roles (nama_lengkap, role)
         `)
         .order('changed_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Error:", error);
+        throw error;
+      }
       if (data) setLogs(data as any);
     } catch (error: any) {
       console.error(error);
