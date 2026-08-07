@@ -100,16 +100,56 @@ const ImportSantri = () => {
             isValid = false;
             errorMsg = 'Kelas kosong.';
           } else {
-            // Cocokkan kelas secara fleksibel (exact match dulu, lalu partial match)
+            // Fungsi normalisasi: buang kata "kelas", tanda kurung, dan spasi berlebih
+            const normalize = (s: string) => s.toLowerCase().replace(/kelas\s*/gi, '').replace(/\(.*?\)/g, '').trim();
+            
+            // Fungsi similarity sederhana: hitung berapa karakter yang cocok berurutan
+            const similarity = (a: string, b: string): number => {
+              const shorter = a.length < b.length ? a : b;
+              const longer = a.length < b.length ? b : a;
+              if (shorter.length === 0) return 0;
+              let matches = 0;
+              for (let i = 0; i < shorter.length; i++) {
+                if (shorter[i] === longer[i]) matches++;
+              }
+              return matches / longer.length;
+            };
+
             const rawKelasLower = rawKelas.toLowerCase();
+            const rawNormalized = normalize(rawKelas);
+            
+            // 1. Exact match
             let matchedKelas = kelasMaster.find(k => k.nama.toLowerCase() === rawKelasLower);
             
-            // Fallback: cari kelas yang MENGANDUNG teks dari Excel, atau sebaliknya
+            // 2. Normalized exact match (tanpa "Kelas" dan tanda kurung)
+            if (!matchedKelas) {
+              matchedKelas = kelasMaster.find(k => normalize(k.nama) === rawNormalized);
+            }
+
+            // 3. Partial includes match
             if (!matchedKelas) {
               matchedKelas = kelasMaster.find(k => 
                 k.nama.toLowerCase().includes(rawKelasLower) || 
-                rawKelasLower.includes(k.nama.toLowerCase())
+                rawKelasLower.includes(k.nama.toLowerCase()) ||
+                normalize(k.nama).includes(rawNormalized) ||
+                rawNormalized.includes(normalize(k.nama))
               );
+            }
+
+            // 4. Fuzzy similarity match (>= 70% mirip setelah dinormalisasi)
+            if (!matchedKelas) {
+              let bestMatch: typeof kelasMaster[0] | null = null;
+              let bestScore = 0;
+              for (const k of kelasMaster) {
+                const score = similarity(normalize(k.nama), rawNormalized);
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestMatch = k;
+                }
+              }
+              if (bestMatch && bestScore >= 0.6) {
+                matchedKelas = bestMatch;
+              }
             }
 
             if (!matchedKelas) {
