@@ -470,7 +470,6 @@ const TransaksiMasuk = () => {
       const { error } = await supabase.from('transaksi_masuk').delete().eq('id', id);
       if (error) throw error;
       fetchRiwayat();
-      fetchGlobalTotal();
     } catch (error: any) {
       console.error('Error deleting:', error);
       alert('Gagal menghapus: ' + error.message);
@@ -934,6 +933,13 @@ const TransaksiMasuk = () => {
                               title="Edit Transaksi"
                             >
                               <Edit2 className="h-4 w-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(trx.id)}
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                              title="Hapus Transaksi"
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
                         </td>

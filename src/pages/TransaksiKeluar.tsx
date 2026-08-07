@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { ArrowLeft, ShoppingCart, Filter, Loader2, CheckCircle2, Plus, Edit2, AlertTriangle, X } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Filter, Loader2, CheckCircle2, Plus, Edit2, AlertTriangle, X, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatRupiah, parseRupiah, formatBulan } from '@/lib/format';
 
@@ -380,6 +380,24 @@ const TransaksiKeluar = () => {
     hitungSisaAnggaran();
   };
 
+  const handleDelete = async (id: string, isKasMutasi: boolean) => {
+    if (!window.confirm('Yakin ingin menghapus transaksi pengeluaran ini? Saldo akan dikembalikan.')) return;
+    try {
+      if (isKasMutasi) {
+        const { error } = await supabase.from('kas_pesantren_mutasi').delete().eq('id', id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('transaksi_keluar').delete().eq('id', id);
+        if (error) throw error;
+      }
+      fetchRiwayat();
+      hitungSisaAnggaran();
+    } catch (error: any) {
+      console.error('Error deleting:', error);
+      alert('Gagal menghapus: ' + error.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
@@ -591,13 +609,22 @@ const TransaksiKeluar = () => {
                             <div className="text-[10px] text-gray-400 mt-1">oleh {trx.user_roles?.nama_lengkap}</div>
                           </td>
                           <td className="p-4 text-center">
-                            <button 
-                              onClick={() => handleEditClick(trx)}
-                              className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded transition-colors"
-                              title="Edit Pengeluaran"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
+                            <div className="flex justify-center space-x-2">
+                              <button 
+                                onClick={() => handleEditClick(trx)}
+                                className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded transition-colors"
+                                title="Edit Pengeluaran"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </button>
+                              <button 
+                                onClick={() => handleDelete(trx.id, !!(trx as any).isKasMutasi)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="Hapus Pengeluaran"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
