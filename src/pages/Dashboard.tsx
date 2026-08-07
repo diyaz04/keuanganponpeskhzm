@@ -200,7 +200,14 @@ const Dashboard = () => {
           
           let bulanNunggak = 0;
           if (!bayarBulanIni) bulanNunggak += 1;
-          if (!bayarBulanLalu) bulanNunggak += 1;
+          
+          // Logika Produksi dimulai Agustus 2026 (Bulan 8)
+          // Jika bulan lalu sebelum Agustus 2026, maka jangan dihitung sebagai nunggak
+          const isBeforeProduction = (prevYear < 2026) || (prevYear === 2026 && prevMonth < 8);
+          
+          if (!isBeforeProduction && !bayarBulanLalu) {
+            bulanNunggak += 1;
+          }
 
           if (bulanNunggak > 0) {
             tunggakan.push({
