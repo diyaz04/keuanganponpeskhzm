@@ -8,6 +8,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 const APP_VERSION = 'v1.0.1';
 
+interface KasBulanan {
   kategori_nama: string;
   total_masuk: number;
   total_keluar: number;
