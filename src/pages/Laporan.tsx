@@ -15,6 +15,7 @@ interface TransaksiMasuk {
   santri: { nama: string; kelas_pengajian?: { nama: string } };
   kategori_pembayaran: { nama: string };
   catatan: string | null;
+  vendor_terpilih: string | null;
   user_roles: { nama_lengkap: string };
 }
 
@@ -25,6 +26,7 @@ interface TransaksiKeluar {
   kategori_pengeluaran: { nama: string };
   sumber_dana: { nama: string };
   keterangan: string | null;
+  vendor_terpilih: string | null;
   user_roles: { nama_lengkap: string };
 }
 
@@ -69,7 +71,7 @@ const Laporan = () => {
       const { data: masuk } = await supabase
         .from('transaksi_masuk')
         .select(`
-          id, nominal, tanggal_transaksi, catatan,
+          id, nominal, tanggal_transaksi, catatan, vendor_terpilih,
           santri(nama, kelas_pengajian(nama)),
           kategori_pembayaran(nama),
           user_roles(nama_lengkap)
@@ -82,7 +84,7 @@ const Laporan = () => {
       const { data: keluar } = await supabase
         .from('transaksi_keluar')
         .select(`
-          id, nominal, tanggal_transaksi, keterangan,
+          id, nominal, tanggal_transaksi, keterangan, vendor_terpilih,
           kategori_pengeluaran(nama),
           sumber_dana:kategori_pembayaran(nama),
           user_roles(nama_lengkap)
@@ -166,6 +168,7 @@ const Laporan = () => {
       'Nama Santri': t.santri?.nama || '-',
       'Kelas': t.santri?.kelas_pengajian?.nama || '-',
       'Kategori': t.kategori_pembayaran?.nama || '-',
+      'Vendor': t.vendor_terpilih || '-',
       'Nominal': t.nominal,
       'Keterangan': t.catatan || '-',
       'Petugas': t.user_roles?.nama_lengkap || '-'
@@ -179,6 +182,7 @@ const Laporan = () => {
       'Tanggal': t.tanggal_transaksi,
       'Kategori Pengeluaran': t.kategori_pengeluaran?.nama || '-',
       'Sumber Dana': t.sumber_dana?.nama || '-',
+      'Vendor': t.vendor_terpilih || '-',
       'Nominal': t.nominal,
       'Keterangan': t.keterangan || '-',
       'Petugas': t.user_roles?.nama_lengkap || '-'
@@ -219,6 +223,33 @@ const Laporan = () => {
     const wsSummary = XLSX.utils.json_to_sheet(wsSummaryData);
     XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan");
 
+    // 6. Ringkasan Distribusi Vendor
+    const vendorMap: Record<string, { masuk: number, keluar: number }> = {};
+    dataMasuk.forEach(t => {
+      if (t.vendor_terpilih) {
+        if (!vendorMap[t.vendor_terpilih]) vendorMap[t.vendor_terpilih] = { masuk: 0, keluar: 0 };
+        vendorMap[t.vendor_terpilih].masuk += t.nominal;
+      }
+    });
+    dataKeluar.forEach(t => {
+      if (t.vendor_terpilih) {
+        if (!vendorMap[t.vendor_terpilih]) vendorMap[t.vendor_terpilih] = { masuk: 0, keluar: 0 };
+        vendorMap[t.vendor_terpilih].keluar += t.nominal;
+      }
+    });
+
+    const vendorSummaryData = Object.keys(vendorMap).map(v => ({
+      'Nama Vendor': v,
+      'Total Masuk': vendorMap[v].masuk,
+      'Total Keluar': vendorMap[v].keluar,
+      'Saldo Akhir Vendor': vendorMap[v].masuk - vendorMap[v].keluar
+    }));
+    
+    if (vendorSummaryData.length > 0) {
+      const wsVendor = XLSX.utils.json_to_sheet(vendorSummaryData);
+      XLSX.utils.book_append_sheet(wb, wsVendor, "Distribusi Vendor");
+    }
+
     XLSX.writeFile(wb, `Laporan_Keuangan_KHZM_${formatBulan(selectedBulan)}_${selectedTahun}.xlsx`);
   };
 
@@ -257,15 +288,16 @@ const Laporan = () => {
     
     autoTable(doc, {
       startY: currentY + 10,
-      head: [['Tanggal', 'Nama Santri', 'Kategori', 'Nominal (Rp)', 'Petugas']],
+      head: [['Tanggal', 'Nama Santri', 'Kategori', 'Vendor', 'Nominal (Rp)', 'Petugas']],
       body: dataMasuk.map(t => [
         t.tanggal_transaksi,
         t.santri?.nama || '-',
         t.kategori_pembayaran?.nama || '-',
+        t.vendor_terpilih || '-',
         t.nominal.toLocaleString('id-ID'),
         t.user_roles?.nama_lengkap || '-'
       ]),
-      foot: [['TOTAL', '', '', totalMasuk.toLocaleString('id-ID'), '']],
+      foot: [['TOTAL', '', '', '', totalMasuk.toLocaleString('id-ID'), '']],
       theme: 'grid',
       headStyles: { fillColor: [16, 185, 129] }, // Green for income
       footStyles: { fillColor: [240, 253, 244], textColor: [20, 20, 20], fontStyle: 'bold' },
@@ -287,15 +319,16 @@ const Laporan = () => {
 
     autoTable(doc, {
       startY: currentY + 10,
-      head: [['Tanggal', 'Kategori', 'Sumber Dana', 'Nominal (Rp)', 'Petugas']],
+      head: [['Tanggal', 'Kategori', 'Sumber Dana', 'Vendor', 'Nominal (Rp)', 'Petugas']],
       body: dataKeluar.map(t => [
         t.tanggal_transaksi,
         t.kategori_pengeluaran?.nama || '-',
         t.sumber_dana?.nama || '-',
+        t.vendor_terpilih || '-',
         t.nominal.toLocaleString('id-ID'),
         t.user_roles?.nama_lengkap || '-'
       ]),
-      foot: [['TOTAL', '', '', totalKeluar.toLocaleString('id-ID'), '']],
+      foot: [['TOTAL', '', '', '', totalKeluar.toLocaleString('id-ID'), '']],
       theme: 'grid',
       headStyles: { fillColor: [220, 38, 38] }, // Red for expenses
       footStyles: { fillColor: [254, 242, 242], textColor: [20, 20, 20], fontStyle: 'bold' },
@@ -361,8 +394,52 @@ const Laporan = () => {
       styles: { fontSize: 8 }
     });
 
+    // Ringkasan Distribusi Vendor
+    currentY = (doc as any).lastAutoTable.finalY + 30;
+    const vendorMapPdf: Record<string, { masuk: number, keluar: number }> = {};
+    dataMasuk.forEach(t => {
+      if (t.vendor_terpilih) {
+        if (!vendorMapPdf[t.vendor_terpilih]) vendorMapPdf[t.vendor_terpilih] = { masuk: 0, keluar: 0 };
+        vendorMapPdf[t.vendor_terpilih].masuk += t.nominal;
+      }
+    });
+    dataKeluar.forEach(t => {
+      if (t.vendor_terpilih) {
+        if (!vendorMapPdf[t.vendor_terpilih]) vendorMapPdf[t.vendor_terpilih] = { masuk: 0, keluar: 0 };
+        vendorMapPdf[t.vendor_terpilih].keluar += t.nominal;
+      }
+    });
+
+    const vendorKeys = Object.keys(vendorMapPdf);
+    if (vendorKeys.length > 0) {
+      if (currentY > doc.internal.pageSize.getHeight() - 100) {
+        doc.addPage();
+        currentY = 40;
+      }
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(20, 20, 20);
+      doc.text('Ringkasan Distribusi Dana Vendor', 40, currentY);
+
+      autoTable(doc, {
+        startY: currentY + 10,
+        head: [['Nama Vendor', 'Total Pemasukan (Rp)', 'Total Pengeluaran (Rp)', 'Saldo Akhir Vendor (Rp)']],
+        body: vendorKeys.map(v => [
+          v,
+          vendorMapPdf[v].masuk.toLocaleString('id-ID'),
+          vendorMapPdf[v].keluar.toLocaleString('id-ID'),
+          (vendorMapPdf[v].masuk - vendorMapPdf[v].keluar).toLocaleString('id-ID')
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [75, 85, 99] }, // Gray
+        styles: { fontSize: 9 }
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 40;
+    } else {
+      currentY = (doc as any).lastAutoTable.finalY + 40;
+    }
+
     // Tanda Tangan / Titimangsa
-    currentY = (doc as any).lastAutoTable.finalY + 40;
     if (currentY > doc.internal.pageSize.getHeight() - 120) {
       doc.addPage();
       currentY = 60;
@@ -500,7 +577,7 @@ const Laporan = () => {
                 <tr>
                   <th className="p-4 font-semibold uppercase">Tgl</th>
                   <th className="p-4 font-semibold uppercase">Santri</th>
-                  <th className="p-4 font-semibold uppercase">Kategori</th>
+                  <th className="p-4 font-semibold uppercase">Kategori & Vendor</th>
                   <th className="p-4 font-semibold uppercase text-right">Nominal</th>
                 </tr>
               </thead>
@@ -509,7 +586,10 @@ const Laporan = () => {
                   <tr key={trx.id} className="hover:bg-gray-50">
                     <td className="p-4 text-sm text-gray-600">{trx.tanggal_transaksi}</td>
                     <td className="p-4 text-sm font-medium text-gray-900">{trx.santri?.nama}</td>
-                    <td className="p-4 text-sm text-gray-600">{trx.kategori_pembayaran?.nama}</td>
+                    <td className="p-4 text-sm text-gray-600">
+                      {trx.kategori_pembayaran?.nama}
+                      {trx.vendor_terpilih && <div className="text-xs text-blue-600 font-medium">Vendor: {trx.vendor_terpilih}</div>}
+                    </td>
                     <td className="p-4 text-sm font-bold text-khzm-green text-right">Rp {trx.nominal.toLocaleString('id-ID')}</td>
                   </tr>
                 ))}

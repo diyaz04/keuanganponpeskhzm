@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { Users, Wallet, LogOut, TrendingUp, Archive, FileText, ShoppingCart, Loader2, AlertCircle, Settings, ShieldAlert, Trash2, Rocket } from 'lucide-react';
@@ -8,11 +8,16 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 const APP_VERSION = 'v1.0.1';
 
-interface KasBulanan {
   kategori_nama: string;
   total_masuk: number;
   total_keluar: number;
   sisa_saldo: number;
+  vendors?: {
+    nama: string;
+    total_masuk: number;
+    total_keluar: number;
+    sisa_saldo: number;
+  }[];
 }
 
 interface ChartData {
@@ -216,22 +221,37 @@ const Dashboard = () => {
   };
 
   const fetchRincianBulanIni = async () => {
-    const { data: kategori } = await supabase.from('kategori_pembayaran').select('id, nama').eq('is_active', true).neq('tipe', 'tabungan');
+    const { data: kategori } = await supabase.from('kategori_pembayaran').select('id, nama, vendor_list').eq('is_active', true).neq('tipe', 'tabungan');
     if (!kategori) return;
 
     // Hitung seluruh uang masuk dan keluar sepanjang masa untuk sisa anggaran sejati
-    const { data: masukData } = await supabase.from('transaksi_masuk').select('kategori_id, nominal');
-    const { data: keluarData } = await supabase.from('transaksi_keluar').select('sumber_dana_id, nominal');
+    const { data: masukData } = await supabase.from('transaksi_masuk').select('kategori_id, nominal, vendor_terpilih');
+    const { data: keluarData } = await supabase.from('transaksi_keluar').select('sumber_dana_id, nominal, vendor_terpilih');
 
     const rincian: KasBulanan[] = kategori.map(kat => {
       const tMasuk = masukData?.filter(m => m.kategori_id === kat.id).reduce((sum, item) => sum + Number(item.nominal), 0) || 0;
       const tKeluar = keluarData?.filter(k => k.sumber_dana_id === kat.id).reduce((sum, item) => sum + Number(item.nominal), 0) || 0;
       
+      let vendors = undefined;
+      if (kat.vendor_list && Array.isArray(kat.vendor_list)) {
+        vendors = kat.vendor_list.map((vName: string) => {
+          const vMasuk = masukData?.filter(m => m.kategori_id === kat.id && m.vendor_terpilih === vName).reduce((sum, item) => sum + Number(item.nominal), 0) || 0;
+          const vKeluar = keluarData?.filter(k => k.sumber_dana_id === kat.id && k.vendor_terpilih === vName).reduce((sum, item) => sum + Number(item.nominal), 0) || 0;
+          return {
+            nama: vName,
+            total_masuk: vMasuk,
+            total_keluar: vKeluar,
+            sisa_saldo: vMasuk - vKeluar
+          };
+        });
+      }
+
       return {
         kategori_nama: kat.nama,
         total_masuk: tMasuk,
         total_keluar: tKeluar,
-        sisa_saldo: tMasuk - tKeluar
+        sisa_saldo: tMasuk - tKeluar,
+        vendors
       };
     });
 
@@ -506,16 +526,49 @@ const Dashboard = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {rincianBulanIni.map((rin, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50/50">
-                        <td className="p-4 font-medium text-gray-900 text-sm">{rin.kategori_nama}</td>
-                        <td className="p-4 text-right text-green-600 text-sm">Rp {rin.total_masuk.toLocaleString('id-ID')}</td>
-                        <td className="p-4 text-right text-red-500 text-sm">Rp {rin.total_keluar.toLocaleString('id-ID')}</td>
-                        <td className="p-4 text-right">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${rin.sisa_saldo > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                            Rp {rin.sisa_saldo.toLocaleString('id-ID')}
-                          </span>
-                        </td>
-                      </tr>
+                      <React.Fragment key={idx}>
+                        <tr className="hover:bg-gray-50/50">
+                          <td className="p-4 font-medium text-gray-900 text-sm">{rin.kategori_nama}</td>
+                          <td className="p-4 text-right text-green-600 text-sm">Rp {rin.total_masuk.toLocaleString('id-ID')}</td>
+                          <td className="p-4 text-right text-red-500 text-sm">Rp {rin.total_keluar.toLocaleString('id-ID')}</td>
+                          <td className="p-4 text-right">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${rin.sisa_saldo > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              Rp {rin.sisa_saldo.toLocaleString('id-ID')}
+                            </span>
+                          </td>
+                        </tr>
+                        {/* Sub-row for vendors if they exist */}
+                        {rin.vendors && rin.vendors.length > 0 && (
+                          <tr className="bg-blue-50/30">
+                            <td colSpan={4} className="p-0">
+                              <div className="pl-8 pr-4 py-3 bg-slate-50 border-l-4 border-blue-400">
+                                <div className="text-xs font-bold text-gray-500 uppercase mb-2">Distribusi Dana Vendor:</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                  {rin.vendors.map((v, vIdx) => (
+                                    <div key={vIdx} className="bg-white p-3 rounded border border-gray-100 shadow-sm">
+                                      <div className="font-bold text-sm text-gray-800">{v.nama}</div>
+                                      <div className="flex justify-between text-xs mt-1">
+                                        <span className="text-gray-500">Masuk:</span>
+                                        <span className="text-green-600 font-medium">Rp {v.total_masuk.toLocaleString('id-ID')}</span>
+                                      </div>
+                                      <div className="flex justify-between text-xs mt-0.5 border-b border-gray-100 pb-1">
+                                        <span className="text-gray-500">Keluar:</span>
+                                        <span className="text-red-500 font-medium">Rp {v.total_keluar.toLocaleString('id-ID')}</span>
+                                      </div>
+                                      <div className="flex justify-between text-xs mt-1">
+                                        <span className="text-gray-700 font-bold">Saldo:</span>
+                                        <span className={`font-bold ${v.sisa_saldo > 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+                                          Rp {v.sisa_saldo.toLocaleString('id-ID')}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                     {rincianBulanIni.length === 0 && (
                       <tr><td colSpan={4} className="p-8 text-center text-sm text-gray-500">Memuat data...</td></tr>

@@ -9,6 +9,7 @@ interface Kategori {
   nominal_default: number;
   tipe: 'rutin' | 'tabungan';
   is_active: boolean;
+  vendor_list: string[] | null;
 }
 
 const MasterKategori = () => {
@@ -22,7 +23,8 @@ const MasterKategori = () => {
   const [formData, setFormData] = useState({
     nama: '',
     nominal_default: 0,
-    tipe: 'rutin' as 'rutin' | 'tabungan'
+    tipe: 'rutin' as 'rutin' | 'tabungan',
+    vendor_list: [] as string[]
   });
   const [saving, setSaving] = useState(false);
 
@@ -53,14 +55,16 @@ const MasterKategori = () => {
       setFormData({
         nama: k.nama,
         nominal_default: k.nominal_default,
-        tipe: k.tipe
+        tipe: k.tipe,
+        vendor_list: k.vendor_list || []
       });
     } else {
       setEditingId(null);
       setFormData({
         nama: '',
         nominal_default: 0,
-        tipe: 'rutin'
+        tipe: 'rutin',
+        vendor_list: []
       });
     }
     setIsModalOpen(true);
@@ -83,7 +87,8 @@ const MasterKategori = () => {
           .update({
             nama: formData.nama,
             nominal_default: formData.nominal_default,
-            tipe: formData.tipe
+            tipe: formData.tipe,
+            vendor_list: formData.vendor_list.length > 0 ? formData.vendor_list : null
           })
           .eq('id', editingId);
           
@@ -96,7 +101,8 @@ const MasterKategori = () => {
             nama: formData.nama,
             nominal_default: formData.nominal_default,
             tipe: formData.tipe,
-            is_active: true
+            is_active: true,
+            vendor_list: formData.vendor_list.length > 0 ? formData.vendor_list : null
           }]);
           
         if (error) throw error;
@@ -331,6 +337,46 @@ const MasterKategori = () => {
                       <span className="ml-2 text-sm text-gray-700">Tabungan</span>
                     </label>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Opsi Vendor (Opsional)</label>
+                  <p className="text-xs text-gray-500 mb-2">Jika pembayaran kategori ini disalurkan ke vendor (misal Uang Makan), daftarkan vendor-nya di sini agar petugas bisa memilih saat transaksi.</p>
+                  
+                  {formData.vendor_list.map((vendor, index) => (
+                    <div key={index} className="flex gap-2 mb-2">
+                      <input 
+                        type="text" 
+                        value={vendor}
+                        onChange={(e) => {
+                          const newList = [...formData.vendor_list];
+                          newList[index] = e.target.value;
+                          setFormData({...formData, vendor_list: newList});
+                        }}
+                        className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-khzm-green focus:border-transparent outline-none transition-all text-sm"
+                        placeholder={`Nama Vendor ${index + 1}`}
+                        required
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          const newList = formData.vendor_list.filter((_, i) => i !== index);
+                          setFormData({...formData, vendor_list: newList});
+                        }}
+                        className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  
+                  <button 
+                    type="button"
+                    onClick={() => setFormData({...formData, vendor_list: [...formData.vendor_list, '']})}
+                    className="mt-1 text-sm text-khzm-green hover:text-emerald-700 font-medium flex items-center"
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Tambah Vendor
+                  </button>
                 </div>
               </div>
 

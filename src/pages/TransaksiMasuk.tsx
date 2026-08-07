@@ -11,6 +11,7 @@ interface Kategori {
   nama: string;
   nominal_default: number;
   tipe: 'rutin' | 'tabungan';
+  vendor_list?: string[] | null;
 }
 
 interface Santri {
@@ -35,6 +36,7 @@ interface CartItem {
   periode_bulan: string;
   periode_tahun: string;
   catatan: string;
+  vendor_terpilih?: string | null;
 }
 
 interface TransaksiRiwayat {
@@ -46,8 +48,8 @@ interface TransaksiRiwayat {
   nominal: number;
   tanggal_transaksi: string;
   periode_bulan: number | null;
-  periode_tahun: number | null;
   catatan: string | null;
+  vendor_terpilih: string | null;
   user_roles: { nama_lengkap: string };
 }
 
@@ -73,11 +75,11 @@ const TransaksiMasuk = () => {
 
   // State for Form Item (Draft)
   const [formData, setFormData] = useState({
-    kategori_id: '',
     nominal_text: '0',
     periode_bulan: (new Date().getMonth() + 1).toString(),
     periode_tahun: new Date().getFullYear().toString(),
-    catatan: ''
+    catatan: '',
+    vendor_terpilih: ''
   });
 
   // KERANJANG PEMBAYARAN (CART)
@@ -129,7 +131,7 @@ const TransaksiMasuk = () => {
     const { data, error } = await supabase
       .from('transaksi_masuk')
       .select(`
-        id, santri_id, kategori_id, nominal, tanggal_transaksi, periode_bulan, periode_tahun, catatan,
+        id, santri_id, kategori_id, nominal, tanggal_transaksi, periode_bulan, periode_tahun, catatan, vendor_terpilih,
         santri!inner(nama, kelas_pengajian(nama)),
         kategori_pembayaran!inner(nama),
         user_roles!inner(nama_lengkap)
@@ -148,7 +150,8 @@ const TransaksiMasuk = () => {
     setFormData(prev => ({
       ...prev,
       kategori_id: id,
-      nominal_text: selected && !editingId ? formatRupiah(selected.nominal_default) : prev.nominal_text
+      nominal_text: selected && !editingId ? formatRupiah(selected.nominal_default) : prev.nominal_text,
+      vendor_terpilih: '' // reset vendor
     }));
   };
 
@@ -186,6 +189,10 @@ const TransaksiMasuk = () => {
     const kat = kategoriList.find(k => k.id === formData.kategori_id);
     if (!kat) return;
 
+    if (kat.vendor_list && kat.vendor_list.length > 0 && !formData.vendor_terpilih) {
+      return alert('Pilih vendor penyedia untuk kategori ini.');
+    }
+
     // Cek keranjang apakah sudah ada tagihan yg sama (kategori & periode sama)
     const exists = cartItems.find(item => 
       item.kategori_id === formData.kategori_id && 
@@ -206,7 +213,8 @@ const TransaksiMasuk = () => {
       nominal_text: formData.nominal_text,
       periode_bulan: formData.periode_bulan,
       periode_tahun: formData.periode_tahun,
-      catatan: formData.catatan
+      catatan: formData.catatan,
+      vendor_terpilih: formData.vendor_terpilih || null
     };
 
     setCartItems(prev => [...prev, newItem]);
@@ -241,7 +249,8 @@ const TransaksiMasuk = () => {
           nominal_text: formatRupiah(kat.nominal_default),
           periode_bulan: formData.periode_bulan,
           periode_tahun: formData.periode_tahun,
-          catatan: formData.catatan
+          catatan: formData.catatan,
+          vendor_terpilih: (kat.vendor_list && kat.vendor_list.length > 0) ? kat.vendor_list[0] : null // auto select first if any
         });
       }
     });
@@ -277,10 +286,15 @@ const TransaksiMasuk = () => {
       targetIds = bulkSantriIds;
     }
 
-    if (editingId) {
+      if (editingId) {
       // EDIT MODE: Langsung proses formData tanpa keranjang
       const nominalNum = parseRupiah(formData.nominal_text);
       if (nominalNum <= 0) return alert('Nominal harus lebih dari 0');
+      
+      const kat = kategoriList.find(k => k.id === formData.kategori_id);
+      if (kat && kat.vendor_list && kat.vendor_list.length > 0 && !formData.vendor_terpilih) {
+        return alert('Pilih vendor penyedia untuk kategori ini.');
+      }
       
       setSaving(true);
       try {
@@ -290,7 +304,8 @@ const TransaksiMasuk = () => {
           tanggal_transaksi: tanggalTransaksi,
           periode_bulan: formData.periode_bulan ? parseInt(formData.periode_bulan) : null,
           periode_tahun: formData.periode_tahun ? parseInt(formData.periode_tahun) : null,
-          catatan: formData.catatan || null
+          catatan: formData.catatan || null,
+          vendor_terpilih: formData.vendor_terpilih || null
         };
         const { error } = await supabase.from('transaksi_masuk').update(payload).eq('id', editingId);
         if (error) throw error;
@@ -336,6 +351,7 @@ const TransaksiMasuk = () => {
               periode_bulan: item.periode_bulan ? parseInt(item.periode_bulan) : null,
               periode_tahun: item.periode_tahun ? parseInt(item.periode_tahun) : null,
               catatan: item.catatan || null,
+              vendor_terpilih: item.vendor_terpilih || null,
               input_by: user.id
             });
           }
@@ -405,7 +421,8 @@ const TransaksiMasuk = () => {
       nominal_text: formatRupiah(trx.nominal),
       periode_bulan: trx.periode_bulan ? trx.periode_bulan.toString() : '',
       periode_tahun: trx.periode_tahun ? trx.periode_tahun.toString() : '',
-      catatan: trx.catatan || ''
+      catatan: trx.catatan || '',
+      vendor_terpilih: trx.vendor_terpilih || ''
     });
     setTanggalTransaksi(trx.tanggal_transaksi);
     setActiveTab('input');
@@ -421,7 +438,8 @@ const TransaksiMasuk = () => {
       nominal_text: kategoriList.length > 0 ? formatRupiah(kategoriList[0].nominal_default) : '0',
       periode_bulan: (new Date().getMonth() + 1).toString(),
       periode_tahun: new Date().getFullYear().toString(),
-      catatan: ''
+      catatan: '',
+      vendor_terpilih: ''
     });
     setTanggalTransaksi(new Date().toISOString().split('T')[0]);
   };
@@ -733,6 +751,29 @@ const TransaksiMasuk = () => {
                     </div>
                   </div>
 
+                  {(() => {
+                    const kat = kategoriList.find(k => k.id === formData.kategori_id);
+                    if (kat && kat.vendor_list && kat.vendor_list.length > 0) {
+                      return (
+                        <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                          <label className="block text-sm font-bold text-blue-900 mb-2">Pilih Vendor Penyedia (Wajib)</label>
+                          <select 
+                            value={formData.vendor_terpilih || ''}
+                            onChange={(e) => setFormData({...formData, vendor_terpilih: e.target.value})}
+                            className="w-full px-4 py-2.5 bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                            required
+                          >
+                            <option value="" disabled>-- Pilih Vendor --</option>
+                            {kat.vendor_list.map((v, i) => (
+                              <option key={i} value={v}>{v}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Catatan Tambahan (Opsional)</label>
                     <textarea 
@@ -795,6 +836,7 @@ const TransaksiMasuk = () => {
                               <tr key={item.temp_id} className="hover:bg-gray-50">
                                 <td className="p-4 text-sm font-bold text-gray-900">
                                   {item.nama_kategori}
+                                  {item.vendor_terpilih && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Vendor: {item.vendor_terpilih}</span>}
                                   {item.catatan && <div className="text-xs font-normal text-gray-500 italic mt-0.5">{item.catatan}</div>}
                                 </td>
                                 <td className="p-4 text-sm text-gray-600">
@@ -907,6 +949,7 @@ const TransaksiMasuk = () => {
                         </td>
                         <td className="p-4 text-sm font-medium text-gray-700">
                           {trx.kategori_pembayaran?.nama}
+                          {trx.vendor_terpilih && <div className="text-xs font-bold text-blue-600 mt-0.5">Vendor: {trx.vendor_terpilih}</div>}
                           {trx.catatan && <div className="text-xs text-gray-400 italic mt-0.5">{trx.catatan}</div>}
                         </td>
                         <td className="p-4 text-sm text-gray-600">

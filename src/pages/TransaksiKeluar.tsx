@@ -13,6 +13,7 @@ interface KategoriPengeluaran {
 interface SumberDana {
   id: string;
   nama: string;
+  vendor_list?: string[] | null;
 }
 
 interface TransaksiKeluar {
@@ -25,7 +26,9 @@ interface TransaksiKeluar {
   tanggal_transaksi: string;
   periode_bulan: number | null;
   periode_tahun: number | null;
+  periode_tahun: number | null;
   keterangan: string | null;
+  vendor_terpilih: string | null;
   user_roles: { nama_lengkap: string };
 }
 
@@ -43,7 +46,8 @@ const TransaksiKeluar = () => {
     tanggal_transaksi: new Date().toISOString().split('T')[0],
     periode_bulan: (new Date().getMonth() + 1).toString(),
     periode_tahun: new Date().getFullYear().toString(),
-    keterangan: ''
+    keterangan: '',
+    vendor_terpilih: ''
   });
 
   const [sisaAnggaran, setSisaAnggaran] = useState<number | null>(null);
@@ -74,7 +78,7 @@ const TransaksiKeluar = () => {
     const { data: katKeluar } = await supabase.from('kategori_pengeluaran').select('*').order('nama');
     if (katKeluar) setKategoriList(katKeluar);
 
-    const { data: sumDana } = await supabase.from('kategori_pembayaran').select('id, nama').eq('is_active', true).neq('tipe', 'tabungan').order('nama');
+    const { data: sumDana } = await supabase.from('kategori_pembayaran').select('id, nama, vendor_list').eq('is_active', true).neq('tipe', 'tabungan').order('nama');
     if (sumDana) {
       setSumberDanaList([
         ...sumDana,
@@ -90,7 +94,7 @@ const TransaksiKeluar = () => {
     const { data: biasaData, error: biasaError } = await supabase
       .from('transaksi_keluar')
       .select(`
-        id, kategori_pengeluaran_id, sumber_dana_id, nominal, tanggal_transaksi, periode_bulan, periode_tahun, keterangan, created_at,
+        id, kategori_pengeluaran_id, sumber_dana_id, nominal, tanggal_transaksi, periode_bulan, periode_tahun, keterangan, created_at, vendor_terpilih,
         kategori_pengeluaran(nama),
         sumber_dana:kategori_pembayaran(nama),
         user_roles!inner(nama_lengkap)
@@ -241,6 +245,11 @@ const TransaksiKeluar = () => {
     if (!formData.kategori_id) return alert('Pilih jenis pengeluaran');
     if (!formData.sumber_dana_id) return alert('Pilih sumber anggaran');
     
+    const sumber = sumberDanaList.find(s => s.id === formData.sumber_dana_id);
+    if (sumber && sumber.vendor_list && sumber.vendor_list.length > 0 && !formData.vendor_terpilih) {
+      return alert('Pilih vendor penyedia untuk pengeluaran ini.');
+    }
+    
     if (sisaAnggaran !== null && nominalNum > sisaAnggaran) {
       return alert(`Pengeluaran gagal! Sisa anggaran ${sumberDanaList.find(s=>s.id === formData.sumber_dana_id)?.nama} di bulan ini hanya Rp ${sisaAnggaran.toLocaleString('id-ID')}.`);
     }
@@ -302,6 +311,7 @@ const TransaksiKeluar = () => {
           periode_bulan: parseInt(formData.periode_bulan),
           periode_tahun: parseInt(formData.periode_tahun),
           keterangan: formData.keterangan || null,
+          vendor_terpilih: formData.vendor_terpilih || null,
           input_by: user.id
         };
 
@@ -363,7 +373,8 @@ const TransaksiKeluar = () => {
         tanggal_transaksi: trx.tanggal_transaksi,
         periode_bulan: (trx.periode_bulan || 1).toString(),
         periode_tahun: (trx.periode_tahun || new Date().getFullYear()).toString(),
-        keterangan: trx.keterangan || ''
+        keterangan: trx.keterangan || '',
+        vendor_terpilih: trx.vendor_terpilih || ''
       });
     }
     // Scroll to top gently
@@ -375,7 +386,8 @@ const TransaksiKeluar = () => {
     setFormData(prev => ({ 
       ...prev, 
       nominal_text: '0', 
-      keterangan: '' 
+      keterangan: '',
+      vendor_terpilih: '' 
     }));
     hitungSisaAnggaran();
   };
@@ -465,6 +477,30 @@ const TransaksiKeluar = () => {
                     </div>
                   )}
                 </div>
+
+                {/* 1.5 Vendor (If Any) */}
+                {(() => {
+                  const sumber = sumberDanaList.find(s => s.id === formData.sumber_dana_id);
+                  if (sumber && sumber.vendor_list && sumber.vendor_list.length > 0) {
+                    return (
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                        <label className="block text-xs font-bold text-blue-900 mb-1">Tujuan Pengeluaran Ke Vendor (Wajib)</label>
+                        <select 
+                          value={formData.vendor_terpilih || ''}
+                          onChange={(e) => setFormData({...formData, vendor_terpilih: e.target.value})}
+                          className="w-full px-3 py-2 bg-white border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                          required
+                        >
+                          <option value="" disabled>-- Pilih Vendor --</option>
+                          {sumber.vendor_list.map((v, i) => (
+                            <option key={i} value={v}>{v}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* 2. Jenis Pengeluaran */}
                 <div>
@@ -596,9 +632,9 @@ const TransaksiKeluar = () => {
                               <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">
                                 {trx.kategori_pengeluaran?.nama}
                               </span>
-                              <span className="text-[10px] font-medium text-amber-600 flex items-center">
-                                Dari: {trx.sumber_dana?.nama} 
-                                ({formatBulan(trx.periode_bulan || 1)} {trx.periode_tahun})
+                              <span className="text-[10px] font-medium text-amber-600 flex flex-col items-start gap-0.5">
+                                <span>Dari: {trx.sumber_dana?.nama} ({formatBulan(trx.periode_bulan || 1)} {trx.periode_tahun})</span>
+                                {trx.vendor_terpilih && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-sm">Vendor: {trx.vendor_terpilih}</span>}
                               </span>
                             </div>
                           </td>
