@@ -23,6 +23,7 @@ const AuditLog = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterAction, setFilterAction] = useState('ALL');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
@@ -38,22 +39,22 @@ const AuditLog = () => {
   const fetchLogs = async () => {
     setLoading(true);
     try {
+      setErrorMsg(null);
       const { data, error } = await supabase
         .from('audit_log')
-        .select(`
-          *,
-          user_roles (nama_lengkap, role)
-        `)
+        .select('*')
         .order('changed_at', { ascending: false })
         .limit(100);
 
       if (error) {
         console.error("Supabase Error:", error);
+        setErrorMsg(error.message || 'Unknown error');
         throw error;
       }
       if (data) setLogs(data as any);
     } catch (error: any) {
       console.error(error);
+      setErrorMsg(error.message || 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -132,7 +133,13 @@ const AuditLog = () => {
           </div>
 
           {/* Table */}
-          {loading ? (
+          {errorMsg ? (
+            <div className="p-20 flex flex-col items-center justify-center text-red-500">
+              <ShieldAlert className="h-10 w-10 mb-4" />
+              <p className="font-bold">Gagal mengambil data Audit Log</p>
+              <p className="text-sm mt-2">{errorMsg}</p>
+            </div>
+          ) : loading ? (
             <div className="p-20 flex flex-col items-center justify-center">
               <Loader2 className="h-10 w-10 text-slate-800 animate-spin mb-4" />
               <p className="text-gray-500 font-medium">Membaca log dari database...</p>
