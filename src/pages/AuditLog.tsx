@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { ArrowLeft, ShieldAlert, History, Filter, Search, Loader2 } from 'lucide-react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { ShieldAlert, History, Filter, Search, Loader2 } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
 
 interface AuditLogEntry {
   id: string;
@@ -11,12 +11,20 @@ interface AuditLogEntry {
   action: string;
   old_data: any;
   new_data: any;
+  changed_by: string | null;
   changed_at: string;
-  user_roles: { nama_lengkap: string; role: string } | null;
+  // resolved di frontend
+  resolved_nama?: string;
+  resolved_role?: string;
+}
+
+interface UserProfile {
+  id: string;
+  nama_lengkap: string;
+  role: string;
 }
 
 const AuditLog = () => {
-  const navigate = useNavigate();
   const { profile } = useAuth();
   
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -27,7 +35,7 @@ const AuditLog = () => {
   
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
-  // Proteksi Khusus Admin (Meski RLS database sudah melindungi datanya, kita cegah halamannya diload)
+  // Proteksi Khusus Admin
   if (profile?.role === 'bendahara') {
     return <Navigate to="/" replace />;
   }
@@ -36,22 +44,77 @@ const AuditLog = () => {
     fetchLogs();
   }, []);
 
+  // Ekstrak user ID dari audit log entry — coba changed_by dulu, lalu input_by dari JSON data
+  const extractUserId = (log: AuditLogEntry): string | null => {
+    // 1. Jika changed_by sudah terisi (ideal)
+    if (log.changed_by) return log.changed_by;
+
+    // 2. Coba ambil dari new_data.input_by (INSERT / UPDATE)
+    if (log.new_data?.input_by) return log.new_data.input_by;
+
+    // 3. Coba ambil dari old_data.input_by (DELETE)
+    if (log.old_data?.input_by) return log.old_data.input_by;
+
+    return null;
+  };
+
   const fetchLogs = async () => {
     setLoading(true);
     try {
       setErrorMsg(null);
-      const { data, error } = await supabase
+      
+      // 1. Fetch audit logs
+      const { data: auditData, error } = await supabase
         .from('audit_log')
         .select('*')
         .order('changed_at', { ascending: false })
-        .limit(100);
+        .limit(200);
 
       if (error) {
         console.error("Supabase Error:", error);
         setErrorMsg(error.message || 'Unknown error');
         throw error;
       }
-      if (data) setLogs(data as any);
+
+      if (!auditData || auditData.length === 0) {
+        setLogs([]);
+        return;
+      }
+
+      // 2. Kumpulkan semua unique user IDs dari audit log
+      const userIdSet = new Set<string>();
+      for (const log of auditData) {
+        const uid = extractUserId(log);
+        if (uid) userIdSet.add(uid);
+      }
+
+      // 3. Fetch semua user profiles sekaligus (batch, bukan per-row)
+      let userMap: Record<string, UserProfile> = {};
+      if (userIdSet.size > 0) {
+        const { data: users } = await supabase
+          .from('user_roles')
+          .select('id, nama_lengkap, role')
+          .in('id', Array.from(userIdSet));
+
+        if (users) {
+          for (const u of users) {
+            userMap[u.id] = u;
+          }
+        }
+      }
+
+      // 4. Resolve nama user ke setiap log entry
+      const resolvedLogs: AuditLogEntry[] = auditData.map(log => {
+        const uid = extractUserId(log);
+        const userProfile = uid ? userMap[uid] : null;
+        return {
+          ...log,
+          resolved_nama: userProfile?.nama_lengkap || null,
+          resolved_role: userProfile?.role || null,
+        } as AuditLogEntry;
+      });
+
+      setLogs(resolvedLogs);
     } catch (error: any) {
       console.error(error);
       setErrorMsg(error.message || 'Unknown error');
@@ -60,12 +123,15 @@ const AuditLog = () => {
     }
   };
 
-  const filteredLogs = logs.filter(log => {
-    const matchAction = filterAction === 'ALL' || log.action === filterAction;
-    const matchSearch = (log.user_roles?.nama_lengkap || 'Sistem').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        log.table_name.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchAction && matchSearch;
-  });
+  const filteredLogs = useMemo(() => {
+    return logs.filter(log => {
+      const matchAction = filterAction === 'ALL' || log.action === filterAction;
+      const userName = log.resolved_nama || 'Sistem';
+      const matchSearch = userName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          log.table_name.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchAction && matchSearch;
+    });
+  }, [logs, filterAction, searchTerm]);
 
   const getActionColor = (action: string) => {
     switch(action) {
@@ -73,6 +139,30 @@ const AuditLog = () => {
       case 'UPDATE': return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'DELETE': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getTableLabel = (tableName: string) => {
+    const labels: Record<string, string> = {
+      'transaksi_masuk': 'Uang Masuk',
+      'transaksi_keluar': 'Pengeluaran',
+      'tabungan_mutasi': 'Tabungan',
+      'santri': 'Data Santri',
+      'kategori_pembayaran': 'Kategori Pembayaran',
+      'kategori_pengeluaran': 'Kategori Pengeluaran',
+      'kelas_pengajian': 'Kelas Pengajian',
+      'user_roles': 'Akun Pengguna',
+      'kas_pesantren_mutasi': 'Kas Pesantren',
+    };
+    return labels[tableName] || tableName;
+  };
+
+  const getActionLabel = (action: string) => {
+    switch(action) {
+      case 'INSERT': return 'Menambahkan';
+      case 'UPDATE': return 'Mengubah';
+      case 'DELETE': return 'Menghapus';
+      default: return action;
     }
   };
 
@@ -155,7 +245,7 @@ const AuditLog = () => {
                   <tr className="bg-white border-b border-gray-100">
                     <th className="p-4 font-semibold text-gray-500 text-xs uppercase tracking-wider">Waktu Kejadian</th>
                     <th className="p-4 font-semibold text-gray-500 text-xs uppercase tracking-wider">Pelaku (User)</th>
-                    <th className="p-4 font-semibold text-gray-500 text-xs uppercase tracking-wider">Tabel</th>
+                    <th className="p-4 font-semibold text-gray-500 text-xs uppercase tracking-wider">Aktivitas</th>
                     <th className="p-4 font-semibold text-gray-500 text-xs uppercase tracking-wider">Aksi</th>
                     <th className="p-4 font-semibold text-gray-500 text-xs uppercase tracking-wider text-right">Detail Record</th>
                   </tr>
@@ -173,15 +263,21 @@ const AuditLog = () => {
                           </div>
                         </td>
                         <td className="p-4">
-                          <div className="text-sm font-bold text-slate-800">{log.user_roles?.nama_lengkap || 'Sistem Database'}</div>
-                          {log.user_roles?.role && (
-                            <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">{log.user_roles.role}</span>
+                          <div className="text-sm font-bold text-slate-800">{log.resolved_nama || 'Sistem'}</div>
+                          {log.resolved_role && (
+                            <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${log.resolved_role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {log.resolved_role === 'admin' ? 'Administrator' : 'Bendahara'}
+                            </span>
                           )}
                         </td>
                         <td className="p-4">
-                          <span className="text-sm font-medium text-slate-700 bg-slate-100 px-2 py-1 rounded">
-                            {log.table_name}
-                          </span>
+                          <div className="text-sm text-gray-800">
+                            <span className="font-medium">{getActionLabel(log.action)}</span>
+                            {' '}data di{' '}
+                            <span className="font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded text-xs">
+                              {getTableLabel(log.table_name)}
+                            </span>
+                          </div>
                         </td>
                         <td className="p-4">
                           <span className={`inline-flex px-2.5 py-1 rounded text-xs font-bold border ${getActionColor(log.action)}`}>
