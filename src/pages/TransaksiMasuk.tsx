@@ -250,7 +250,7 @@ const TransaksiMasuk = () => {
           periode_bulan: formData.periode_bulan,
           periode_tahun: formData.periode_tahun,
           catatan: formData.catatan,
-          vendor_terpilih: (kat.vendor_list && kat.vendor_list.length > 0) ? kat.vendor_list[0] : null // auto select first if any
+          vendor_terpilih: (kat.vendor_list && kat.vendor_list.length > 0) ? '' : null // do not auto-select to enforce user choice
         });
       }
     });
@@ -326,6 +326,13 @@ const TransaksiMasuk = () => {
 
     // INSERT MODE: Proses seluruh keranjang
     if (cartItems.length === 0) return alert('Keranjang pembayaran kosong! Tambahkan minimal 1 tagihan.');
+
+    for (const item of cartItems) {
+      const kat = kategoriList.find(k => k.id === item.kategori_id);
+      if (kat && kat.vendor_list && kat.vendor_list.length > 0 && !item.vendor_terpilih) {
+        return alert(`Pilih vendor penyedia untuk kategori ${kat.nama} di keranjang.`);
+      }
+    }
 
     setSaving(true);
     try {
@@ -836,8 +843,28 @@ const TransaksiMasuk = () => {
                               <tr key={item.temp_id} className="hover:bg-gray-50">
                                 <td className="p-4 text-sm font-bold text-gray-900">
                                   {item.nama_kategori}
-                                  {item.vendor_terpilih && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Vendor: {item.vendor_terpilih}</span>}
-                                  {item.catatan && <div className="text-xs font-normal text-gray-500 italic mt-0.5">{item.catatan}</div>}
+                                  {(() => {
+                                    const kat = kategoriList.find(k => k.id === item.kategori_id);
+                                    if (kat && kat.vendor_list && kat.vendor_list.length > 0) {
+                                      return (
+                                        <div className="mt-1">
+                                          <select
+                                            value={item.vendor_terpilih || ''}
+                                            onChange={(e) => {
+                                              const newVendor = e.target.value;
+                                              setCartItems(prev => prev.map(p => p.temp_id === item.temp_id ? { ...p, vendor_terpilih: newVendor } : p));
+                                            }}
+                                            className={`text-xs border rounded px-2 py-1 font-medium outline-none ${item.vendor_terpilih ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-300 text-red-600'}`}
+                                          >
+                                            <option value="" disabled>-- Pilih Vendor (Wajib) --</option>
+                                            {kat.vendor_list.map((v, i) => <option key={i} value={v}>{v}</option>)}
+                                          </select>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                  {item.catatan && <div className="text-xs font-normal text-gray-500 italic mt-1">{item.catatan}</div>}
                                 </td>
                                 <td className="p-4 text-sm text-gray-600">
                                   {item.periode_bulan ? `${formatBulan(Number(item.periode_bulan))} ${item.periode_tahun}` : '-'}

@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { UserPlus, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+
 const KelolaUser = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -16,17 +19,57 @@ const KelolaUser = () => {
     setLoading(true);
     setMessage({ type: '', text: '' });
     
-    // INFO: Pembuatan user dari client-side hanya bisa SignUp dan otomatis me-login-kan user baru.
-    // Dalam skenario dunia nyata untuk Supabase, hal ini butuh Supabase Edge Function (Server-Side) 
-    // dengan Service Role Key agar tidak me-logout Admin yang sedang aktif.
-    
-    setTimeout(() => {
-      setMessage({ 
-        type: 'error', 
-        text: 'Karena limitasi client-side Supabase, fitur Invite User ini membutuhkan Supabase Edge Function (Admin API). UI sudah disiapkan, logika backend dapat ditambahkan kemudian.' 
+    try {
+      // 1. Buat Supabase client sekunder untuk pendaftaran agar tidak menimpa sesi Admin yang sedang login
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      const adminAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        }
       });
+
+      // 2. Mendaftarkan User Baru (Email verification WAJIB dimatikan di Supabase Dashboard)
+      const { data: authData, error: authError } = await adminAuthClient.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+
+      if (!authData.user) {
+        throw new Error('Gagal membuat user auth. Pastikan verifikasi email dinonaktifkan di Supabase Dashboard!');
+      }
+
+      // 3. Masukkan data profil (role & nama) ke tabel user_roles menggunakan client utama (karena butuh hak akses admin)
+      const { error: dbError } = await supabase.from('user_roles').insert([
+        { 
+          id: authData.user.id,
+          role: role,
+          nama_lengkap: nama
+        }
+      ]);
+
+      if (dbError) {
+        // Jika gagal insert role, kita beritahu admin (Ideally we delete auth user, tapi client tidak bisa)
+        throw new Error('Gagal menyimpan profil pengguna ke database: ' + dbError.message);
+      }
+
+      setMessage({ type: 'success', text: 'Berhasil membuat akun! Pengguna sekarang dapat login menggunakan email & password tersebut.' });
+      
+      // Reset form
+      setEmail('');
+      setPassword('');
+      setNama('');
+      setRole('bendahara');
+      
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Terjadi kesalahan saat membuat pengguna.' });
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
