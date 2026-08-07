@@ -100,11 +100,21 @@ const ImportSantri = () => {
             isValid = false;
             errorMsg = 'Kelas kosong.';
           } else {
-            // Check if class exists in master (case insensitive)
-            const matchedKelas = kelasMaster.find(k => k.nama.toLowerCase() === rawKelas.toLowerCase());
+            // Cocokkan kelas secara fleksibel (exact match dulu, lalu partial match)
+            const rawKelasLower = rawKelas.toLowerCase();
+            let matchedKelas = kelasMaster.find(k => k.nama.toLowerCase() === rawKelasLower);
+            
+            // Fallback: cari kelas yang MENGANDUNG teks dari Excel, atau sebaliknya
+            if (!matchedKelas) {
+              matchedKelas = kelasMaster.find(k => 
+                k.nama.toLowerCase().includes(rawKelasLower) || 
+                rawKelasLower.includes(k.nama.toLowerCase())
+              );
+            }
+
             if (!matchedKelas) {
               isValid = false;
-              errorMsg = `Kelas "${rawKelas}" tidak ditemukan di database.`;
+              errorMsg = `Kelas "${rawKelas}" tidak ditemukan di database. Kelas yang tersedia: ${kelasMaster.map(k => k.nama).join(', ')}`;
             } else {
               matchedKelasId = matchedKelas.id;
             }
