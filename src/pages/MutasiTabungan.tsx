@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { ArrowLeft, Wallet, Search, ArrowDownCircle, ArrowUpCircle, Loader2, CheckCircle2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Wallet, Search, ArrowDownCircle, ArrowUpCircle, Loader2, CheckCircle2, Download, FileSpreadsheet } from 'lucide-react';
 import { formatRupiah, parseRupiah } from '@/lib/format';
+import { exportTabunganSantri, exportTabunganSemua } from '@/lib/exportTabungan';
 
 interface Santri {
   id: string;
@@ -21,8 +21,8 @@ interface MutasiHistory {
 }
 
 const MutasiTabungan = () => {
-  const navigate = useNavigate();
   const { user } = useAuth();
+  const [exporting, setExporting] = useState<'santri' | 'semua' | null>(null);
   
   const [santriList, setSantriList] = useState<Santri[]>([]);
   const [searchSantri, setSearchSantri] = useState('');
@@ -113,6 +113,31 @@ const MutasiTabungan = () => {
     return santriList.filter(s => s.nama.toLowerCase().includes(searchSantri.toLowerCase())).slice(0, 5);
   }, [searchSantri, santriList]);
 
+  const handleExportSantri = async () => {
+    if (!selectedSantri) return;
+    setExporting('santri');
+    try {
+      await exportTabunganSantri({ id: selectedSantri.id, nama: selectedSantri.nama, kamar: selectedSantri.kamar });
+    } catch (error: any) {
+      console.error('Error export tabungan santri:', error);
+      alert('Gagal export: ' + (error?.message || 'terjadi kesalahan'));
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportSemua = async () => {
+    setExporting('semua');
+    try {
+      await exportTabunganSemua();
+    } catch (error: any) {
+      console.error('Error export rekap tabungan:', error);
+      alert('Gagal export: ' + (error?.message || 'terjadi kesalahan'));
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !selectedSantri) return;
@@ -165,9 +190,19 @@ const MutasiTabungan = () => {
         {/* Global Overview Card */}
         <div className="bg-gradient-to-r from-khzm-emerald to-khzm-green rounded-2xl p-6 text-white shadow-lg mb-8 relative overflow-hidden">
           <Wallet className="absolute right-[-20px] bottom-[-20px] h-48 w-48 text-white opacity-10" />
-          <div className="relative z-10">
-            <p className="text-green-50 font-medium mb-1">Total Titipan Tabungan Seluruh Santri</p>
-            <h2 className="text-4xl font-bold">Rp {globalTotal.toLocaleString('id-ID')}</h2>
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+              <p className="text-green-50 font-medium mb-1">Total Titipan Tabungan Seluruh Santri</p>
+              <h2 className="text-4xl font-bold">Rp {globalTotal.toLocaleString('id-ID')}</h2>
+            </div>
+            <button
+              onClick={handleExportSemua}
+              disabled={exporting !== null}
+              className="flex items-center justify-center px-4 py-2.5 bg-white text-khzm-green rounded-lg font-bold text-sm shadow hover:bg-green-50 transition-colors disabled:opacity-60"
+            >
+              {exporting === 'semua' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
+              Export Rekap Semua Santri (Excel)
+            </button>
           </div>
         </div>
 
@@ -336,7 +371,17 @@ const MutasiTabungan = () => {
             {/* Riwayat Buku Tabungan */}
             {selectedSantri && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <h3 className="font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4">Buku Tabungan {selectedSantri.nama}</h3>
+                <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4 gap-3">
+                  <h3 className="font-bold text-gray-900">Buku Tabungan {selectedSantri.nama}</h3>
+                  <button
+                    onClick={handleExportSantri}
+                    disabled={exporting !== null || historyList.length === 0}
+                    className="flex items-center px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 shrink-0"
+                  >
+                    {exporting === 'santri' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
+                    Export Excel
+                  </button>
+                </div>
                 
                 {loadingSantri ? (
                   <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 text-khzm-green animate-spin" /></div>

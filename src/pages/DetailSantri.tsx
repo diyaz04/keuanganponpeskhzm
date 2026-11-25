@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, MapPin, Calendar, BookOpen, Clock, Activity, Download, Wallet } from 'lucide-react';
+import { exportTabunganSantri } from '@/lib/exportTabungan';
 
 interface SantriDetail {
   id: string;
@@ -283,8 +284,25 @@ const DetailSantri = () => {
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Saldo Card */}
             <div className="bg-gradient-to-r from-khzm-emerald to-khzm-green rounded-2xl p-6 text-white shadow-lg shadow-green-100/50">
-              <p className="text-green-50 font-medium mb-1">Total Saldo Tabungan Aktif</p>
-              <h2 className="text-4xl font-bold">Rp {saldoTerakhir.toLocaleString('id-ID')}</h2>
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                <div>
+                  <p className="text-green-50 font-medium mb-1">Total Saldo Tabungan Aktif</p>
+                  <h2 className="text-4xl font-bold">Rp {saldoTerakhir.toLocaleString('id-ID')}</h2>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await exportTabunganSantri({ id: santri.id, nama: santri.nama, kamar: santri.kamar, kelas: santri.kelas_pengajian?.nama });
+                    } catch (e: any) {
+                      alert('Gagal export: ' + (e?.message || 'terjadi kesalahan'));
+                    }
+                  }}
+                  disabled={tabungan.length === 0}
+                  className="flex items-center justify-center px-4 py-2.5 bg-white text-khzm-green rounded-lg font-bold text-sm shadow hover:bg-green-50 transition-colors disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4 mr-2" /> Export Excel
+                </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
